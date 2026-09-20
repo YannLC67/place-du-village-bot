@@ -1,23 +1,20 @@
+
 require("dotenv").config();
+
+const fs = require("fs");
 
 const {
   Client,
   GatewayIntentBits,
   Events,
-  REST,
-  Routes,
   SlashCommandBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
 } = require("discord.js");
-
-/* =====================================================
-   CLIENT DISCORD
-===================================================== */
 
 const client = new Client({
   intents: [
@@ -27,1161 +24,583 @@ const client = new Client({
   ],
 });
 
+const CLIENT_ID = "1550855745719902218";
+const GUILD_ID = process.env.GUILD_ID;
 
-/* =====================================================
-   COMMANDES
-===================================================== */
+const STATS_FILE = "./stats.json";
 
-const commands = [
+// ======================================================
+// 📊 STATISTIQUES DU VILLAGE
+// ======================================================
 
-  // TU PRÉFÈRES
-  new SlashCommandBuilder()
-    .setName("tu-preferes")
-    .setDescription("Crée un Tu préfères et fais voter le village 🤔"),
+const statNames = {
+  plouc: "🗣️ « Plouc »",
+  pecno: "🗣️ « Pécno »",
+  incroyable: "😱 « Incroyable »",
+  plaques: "🚗 « J’ai besoin de plaques »",
+};
 
-  // CASINO
-  new SlashCommandBuilder()
-    .setName("casino")
-    .setDescription("Joue à la machine à sous du village 🎰"),
+const statPeople = {
+  plouc: "Lisa",
+  pecno: "Lisa",
+  incroyable: "Antoine",
+  plaques: "Antoine",
+};
 
-  // ROULETTE
-  new SlashCommandBuilder()
-    .setName("roulette")
-    .setDescription("Désigne un villageois au hasard 🎯"),
+let statsData = {
+  users: {},
+  weekly: {
+    nextAt: 0,
+  },
+};
 
-  // POTIN
-  new SlashCommandBuilder()
-    .setName("potin")
-    .setDescription("Découvre un potin du village 🗣️"),
+// ======================================================
+// 📂 CHARGEMENT DES STATS
+// ======================================================
 
-  // ACCUSER
-  new SlashCommandBuilder()
-    .setName("accuser")
-    .setDescription("Accuse quelqu'un d'un crime ridicule 🚨")
-    .addUserOption(option =>
-      option
-        .setName("personne")
-        .setDescription("La personne accusée")
-        .setRequired(true)
-    ),
-
-  // TRIBUNAL
-  new SlashCommandBuilder()
-    .setName("tribunal")
-    .setDescription("Organise un procès du village ⚖️")
-    .addUserOption(option =>
-      option
-        .setName("personne")
-        .setDescription("La personne jugée")
-        .setRequired(true)
-    ),
-
-  // POUMBA MANUEL
-  new SlashCommandBuilder()
-    .setName("poumba")
-    .setDescription("Déclenche l'alerte Poumba 🐗"),
-
-  // HALL OF FAME
-  new SlashCommandBuilder()
-    .setName("halloffame")
-    .setDescription("Ajoute un message au Hall of Fame 🏆")
-    .addStringOption(option =>
-      option
-        .setName("moment")
-        .setDescription("Décris le moment légendaire")
-        .setRequired(true)
-    ),
-
-  // PHOTO
-  new SlashCommandBuilder()
-    .setName("photo")
-    .setDescription("Lance un vote sur une photo 📸")
-    .addStringOption(option =>
-      option
-        .setName("description")
-        .setDescription("Décris la photo")
-        .setRequired(true)
-    ),
-
-].map(command => command.toJSON());
-
-
-/* =====================================================
-   DONNÉES
-===================================================== */
-
-const activeTuPreferes = new Map();
-const activeTribunaux = new Map();
-
-
-/* =====================================================
-   TU PRÉFÈRES
-===================================================== */
-
-function afficherTuPreferes(poll) {
-
-  const votes = Object.values(poll.votes);
-
-  const voteA =
-    votes.filter(vote => vote === "A").length;
-
-  const voteB =
-    votes.filter(vote => vote === "B").length;
-
-  const total = votes.length;
-
-  const pourcentageA =
-    total === 0
-      ? 0
-      : Math.round((voteA / total) * 100);
-
-  const pourcentageB =
-    total === 0
-      ? 0
-      : Math.round((voteB / total) * 100);
-
-  return (
-    `🤔 **TU PRÉFÈRES ?** 🤔\n\n` +
-    `**${poll.question}**\n\n` +
-    `🅰️ **${poll.choixA}**\n` +
-    `➡️ ${voteA} vote(s) — **${pourcentageA}%**\n\n` +
-    `🅱️ **${poll.choixB}**\n` +
-    `➡️ ${voteB} vote(s) — **${pourcentageB}%**\n\n` +
-    `👥 **${total}** participant(s)`
-  );
+function chargerStats() {
+  try {
+    if (fs.existsSync(STATS_FILE)) {
+      const data = fs.readFileSync(STATS_FILE, "utf8");
+      statsData = JSON.parse(data);
+    }
+  } catch (error) {
+    console.error("❌ Impossible de charger stats.json :", error);
+  }
 }
 
+// ======================================================
+// 💾 SAUVEGARDE DES STATS
+// ======================================================
 
-function afficherResultatTuPreferes(poll) {
+function sauvegarderStats() {
+  try {
+    fs.writeFileSync(
+      STATS_FILE,
+      JSON.stringify(statsData, null, 2),
+      "utf8"
+    );
+  } catch (error) {
+    console.error("❌ Impossible de sauvegarder stats.json :", error);
+  }
+}
 
-  const votes = Object.values(poll.votes);
+// ======================================================
+// 🔢 OBTENIR UNE STAT
+// ======================================================
 
-  const voteA =
-    votes.filter(vote => vote === "A").length;
-
-  const voteB =
-    votes.filter(vote => vote === "B").length;
-
-  const total = votes.length;
-
-  const pourcentageA =
-    total === 0
-      ? 0
-      : Math.round((voteA / total) * 100);
-
-  const pourcentageB =
-    total === 0
-      ? 0
-      : Math.round((voteB / total) * 100);
-
-  let resultat;
-
-  if (voteA > voteB) {
-
-    resultat =
-      `🏆 **Le choix A gagne !**`;
-
-  } else if (voteB > voteA) {
-
-    resultat =
-      `🏆 **Le choix B gagne !**`;
-
-  } else {
-
-    resultat =
-      `🤝 **Égalité parfaite !**`;
+function obtenirStat(type) {
+  if (!statsData.users[type]) {
+    statsData.users[type] = 0;
   }
 
+  return statsData.users[type];
+}
+
+// ======================================================
+// ➕ AJOUTER +1
+// ======================================================
+
+function ajouterStat(type) {
+  if (!statsData.users[type]) {
+    statsData.users[type] = 0;
+  }
+
+  statsData.users[type]++;
+
+  sauvegarderStats();
+
+  return statsData.users[type];
+}
+
+// ======================================================
+// 📢 MESSAGE APRÈS UN +1
+// ======================================================
+
+function creerMessageStats(type, total) {
+  const personne = statPeople[type];
+
   return (
-    `📊 **RÉSULTAT DU TU PRÉFÈRES** 📊\n\n` +
-
-    `**${poll.question}**\n\n` +
-
-    `🅰️ **${poll.choixA}**\n` +
-    `➡️ ${voteA} vote(s) — **${pourcentageA}%**\n\n` +
-
-    `🅱️ **${poll.choixB}**\n` +
-    `➡️ ${voteB} vote(s) — **${pourcentageB}%**\n\n` +
-
-    `👥 **${total}** participant(s)\n\n` +
-
-    `${resultat}`
+    "📢 **NOUVELLE STATISTIQUE DU VILLAGE !** 📢\n\n" +
+    "👤 **" + personne + "**\n" +
+    statNames[type] + "\n\n" +
+    "📈 **+1**\n" +
+    "🔢 Total : **" + total + " fois**\n\n" +
+    "🏡 *Le village n'oublie rien...*"
   );
 }
 
+// ======================================================
+// 📅 STATISTIQUES HEBDOMADAIRES
+// ======================================================
 
-function boutonsTuPreferes(id) {
+async function envoyerStatsHebdomadaires(guild) {
+  try {
+    let channel = guild.channels.cache.find(
+      (ch) =>
+        ch.name === "général" ||
+        ch.name === "general"
+    );
 
-  return [
-    new ActionRowBuilder().addComponents(
+    if (!channel && process.env.CHANNEL_ID) {
+      channel = guild.channels.cache.get(
+        process.env.CHANNEL_ID
+      );
+    }
 
-      new ButtonBuilder()
-        .setCustomId(`tp_A_${id}`)
-        .setLabel("🅰️ Choix A")
-        .setStyle(ButtonStyle.Primary),
-
-      new ButtonBuilder()
-        .setCustomId(`tp_B_${id}`)
-        .setLabel("🅱️ Choix B")
-        .setStyle(ButtonStyle.Success),
-
-      new ButtonBuilder()
-        .setCustomId(`tp_edit_${id}`)
-        .setLabel("✏️ Modifier")
-        .setStyle(ButtonStyle.Secondary),
-
-      new ButtonBuilder()
-        .setCustomId(`tp_end_${id}`)
-        .setLabel("🔒 Terminer")
-        .setStyle(ButtonStyle.Danger),
-
-    ),
-  ];
-}
-
-
-/* =====================================================
-   ACCUSATIONS
-===================================================== */
-
-const accusations = [
-
-  {
-    theme: "🍻 BUVERIE",
-    phrases: [
-      "a fini une bouteille qui ne lui appartenait pas",
-      "a commandé une tournée sans prévenir personne",
-      "a mystérieusement perdu son verre",
-      "a dit « je bois juste un verre »",
-      "a passé beaucoup trop de temps au bar",
-      "a été incapable de retrouver son verre alors qu'il était dans sa main",
-      "a prétendu ne pas être bourré alors que personne ne le croyait",
-      "a participé activement à la disparition des provisions du village",
-    ],
-  },
-
-  {
-    theme: "🎿 SKI",
-    phrases: [
-      "a passé plus de temps au bar qu'à skier",
-      "a pris une piste noire avec une confiance injustifiée",
-      "a accusé ses skis de tous ses problèmes",
-      "a fait une pause vin chaud de trois heures",
-      "a réussi à se perdre sur une piste parfaitement balisée",
-      "a préféré l'après-ski au ski",
-      "a chuté avec une élégance absolument inexistante",
-      "a annoncé qu'il maîtrisait le ski alors que personne ne l'avait demandé",
-    ],
-  },
-
-  {
-    theme: "🎉 SOIRÉES",
-    phrases: [
-      "a dit « je rentre tôt » avant de finir dernier",
-      "a disparu pendant 45 minutes sans aucune explication",
-      "a lancé une soirée alors que personne n'avait rien demandé",
-      "a raconté une histoire que personne n'avait demandée",
-      "a oublié comment il était rentré",
-      "a fini par parler à des inconnus comme s'ils étaient ses meilleurs amis",
-      "a déclaré que la soirée était calme alors qu'elle ne l'était absolument pas",
-      "a été responsable d'au moins une mauvaise décision collective",
-    ],
-  },
-
-  {
-    theme: "🎲 GAGES DE SOIRÉE",
-    phrases: [
-      "doit faire un discours officiel devant le village",
-      "doit faire une imitation pendant 30 secondes",
-      "doit parler avec un accent pendant 5 minutes",
-      "doit laisser le village choisir sa prochaine photo de profil",
-      "doit raconter sa pire anecdote de soirée",
-      "doit chanter le refrain d'une chanson choisie par le village",
-      "doit envoyer un message choisi par le village",
-      "doit porter un surnom ridicule pendant toute la soirée",
-    ],
-  },
-
-];
-
-
-function accusationAleatoire() {
-
-  const theme =
-    accusations[
-      Math.floor(Math.random() * accusations.length)
-    ];
-
-  const phrase =
-    theme.phrases[
-      Math.floor(Math.random() * theme.phrases.length)
-    ];
-
-  return {
-    theme: theme.theme,
-    phrase,
-  };
-}
-
-
-/* =====================================================
-   TRIBUNAL
-===================================================== */
-
-function boutonsTribunal(id) {
-
-  return [
-    new ActionRowBuilder().addComponents(
-
-      new ButtonBuilder()
-        .setCustomId(`tribunal_coupable_${id}`)
-        .setLabel("⚖️ COUPABLE")
-        .setStyle(ButtonStyle.Danger),
-
-      new ButtonBuilder()
-        .setCustomId(`tribunal_innocent_${id}`)
-        .setLabel("🕊️ INNOCENT")
-        .setStyle(ButtonStyle.Success),
-
-      new ButtonBuilder()
-        .setCustomId(`tribunal_end_${id}`)
-        .setLabel("🔒 Terminer")
-        .setStyle(ButtonStyle.Secondary),
-
-    ),
-  ];
-}
-
-
-function afficherTribunal(tribunal) {
-
-  const coupable =
-    Object.values(tribunal.votes)
-      .filter(vote => vote === "coupable")
-      .length;
-
-  const innocent =
-    Object.values(tribunal.votes)
-      .filter(vote => vote === "innocent")
-      .length;
-
-  const total =
-    coupable + innocent;
-
-  return (
-    `⚖️ **TRIBUNAL DU VILLAGE** ⚖️\n\n` +
-
-    `👤 **Accusé :** ${tribunal.personne}\n\n` +
-
-    `🚨 **Accusation :**\n` +
-    `**${tribunal.accusation}**\n\n` +
-
-    `⚖️ **Votes du village**\n\n` +
-
-    `🔴 Coupable : **${coupable}**\n` +
-    `🟢 Innocent : **${innocent}**\n\n` +
-
-    `👥 ${total} vote(s)`
-  );
-}
-
-
-/* =====================================================
-   POUMBA AUTOMATIQUE
-===================================================== */
-
-client.on(
-  Events.VoiceStateUpdate,
-  async (oldState, newState) => {
-
-    // Vérifie la personne ciblée
-    if (
-      !newState.member ||
-      newState.member.id !== process.env.TARGET_USER_ID
-    ) {
+    if (!channel) {
+      console.log(
+        "❌ Salon général introuvable pour les statistiques."
+      );
       return;
     }
 
-    // Vérifie qu'elle vient d'entrer dans un vocal
-    if (
-      !oldState.channelId &&
-      newState.channelId
-    ) {
+    const statsActives = Object.keys(statNames).filter(
+      (type) => obtenirStat(type) > 0
+    );
 
-      const channel =
-        newState.guild.channels.cache.get(
-          process.env.CHANNEL_ID
-        );
-
-      if (!channel) {
-        console.log(
-          "❌ CHANNEL_ID introuvable pour Poumba."
-        );
-        return;
-      }
-
+    if (statsActives.length === 0) {
       await channel.send(
-        `🚨🐗 **ALERTE POUMBA !** 🐗🚨\n\n` +
+        "📊 **STATISTIQUES DU VILLAGE** 📊\n\n" +
+        "Cette semaine, le village n'a rien à signaler...\n\n" +
+        "🏡 *Tout le monde a été étrangement sage.*"
+      );
 
-        `**${newState.member.displayName}** ` +
-        `vient d'entrer dans le vocal !\n\n` +
+      return;
+    }
 
-        `🥔 **PROTÉGEZ LES PATATES !**\n` +
-        `🍺 **LE BAR EST DÉSORMAIS SOUS SURVEILLANCE !**\n` +
-        `🏃💨 **FUYEZ, LE POUMBA EST LÀ !**`
+    const melangees = [...statsActives].sort(
+      () => Math.random() - 0.5
+    );
+
+    const selection = melangees.slice(0, 5);
+
+    let message =
+      "📊 **LES STATISTIQUES DU VILLAGE** 📊\n\n";
+
+    for (const type of selection) {
+      const total = obtenirStat(type);
+      const personne = statPeople[type];
+
+      message +=
+        "👤 **" + personne + "** — " +
+        statNames[type] + "\n" +
+        "🔢 **" + total + " fois**\n\n";
+    }
+
+    message +=
+      "🏡 *Le village n'oublie rien... même les choses inutiles.*";
+
+    await channel.send(message);
+
+  } catch (error) {
+    console.error(
+      "❌ Erreur lors de l'envoi des statistiques hebdomadaires :",
+      error
+    );
+  }
+}
+
+// ======================================================
+// ⏰ VÉRIFICATION DES STATS HEBDOMADAIRES
+// ======================================================
+
+async function verifierStatsHebdomadaires() {
+  try {
+    const guild = client.guilds.cache.get(GUILD_ID);
+
+    if (!guild) {
+      return;
+    }
+
+    const maintenant = Date.now();
+
+    if (!statsData.weekly.nextAt) {
+      statsData.weekly.nextAt =
+        maintenant +
+        7 * 24 * 60 * 60 * 1000;
+
+      sauvegarderStats();
+
+      console.log(
+        "📅 Première statistique hebdomadaire programmée dans 7 jours."
+      );
+
+      return;
+    }
+
+    if (maintenant >= statsData.weekly.nextAt) {
+      await envoyerStatsHebdomadaires(guild);
+
+      statsData.weekly.nextAt =
+        maintenant +
+        7 * 24 * 60 * 60 * 1000;
+
+      sauvegarderStats();
+
+      console.log(
+        "📊 Statistiques hebdomadaires envoyées !"
       );
     }
+
+  } catch (error) {
+    console.error(
+      "❌ Erreur vérification statistiques :",
+      error
+    );
   }
-);
+}
 
+// ======================================================
+// 🚀 COMMANDES
+// ======================================================
 
-/* =====================================================
-   BOT PRÊT
-===================================================== */
+const commands = [
+
+  // ====================================================
+  // 🤔 TU PRÉFÈRES
+  // ====================================================
+
+  new SlashCommandBuilder()
+    .setName("tu-preferes")
+    .setDescription(
+      "Lancer un Tu préfères dans le village"
+    ),
+
+  // ====================================================
+  // 🎰 CASINO
+  // ====================================================
+
+  new SlashCommandBuilder()
+    .setName("casino")
+    .setDescription(
+      "Lancer une partie de casino"
+    ),
+
+  // ====================================================
+  // 🎡 ROULETTE
+  // ====================================================
+
+  new SlashCommandBuilder()
+    .setName("roulette")
+    .setDescription(
+      "Lancer la roulette du village"
+    ),
+
+  // ====================================================
+  // 🗣️ POTIN
+  // ====================================================
+
+  new SlashCommandBuilder()
+    .setName("potin")
+    .setDescription(
+      "Lancer un potin du village"
+    ),
+
+  // ====================================================
+  // ⚔️ ACCUSER
+  // ====================================================
+
+  new SlashCommandBuilder()
+    .setName("accuser")
+    .setDescription(
+      "Accuser quelqu'un au village"
+    )
+    .addUserOption((option) =>
+      option
+        .setName("personne")
+        .setDescription(
+          "La personne à accuser"
+        )
+        .setRequired(true)
+    )
+    .addStringOption((option) =>
+      option
+        .setName("theme")
+        .setDescription(
+          "Le thème de l'accusation"
+        )
+        .setRequired(true)
+        .addChoices(
+          {
+            name: "🍻 BUVERIE",
+            value: "buverie",
+          },
+          {
+            name: "🎿 SKI",
+            value: "ski",
+          },
+          {
+            name: "🎉 SOIRÉES",
+            value: "soirees",
+          },
+          {
+            name: "🎲 GAGES DE SOIRÉE",
+            value: "gages",
+          }
+        )
+    ),
+
+  // ====================================================
+  // ⚖️ TRIBUNAL
+  // ====================================================
+
+  new SlashCommandBuilder()
+    .setName("tribunal")
+    .setDescription(
+      "Ouvrir un tribunal du village"
+    ),
+
+  // ====================================================
+  // 🐗 POUMBA
+  // ====================================================
+
+  new SlashCommandBuilder()
+    .setName("poumba")
+    .setDescription(
+      "Déclencher manuellement une alerte Poumba"
+    ),
+
+  // ====================================================
+  // 🏆 HALL OF FAME
+  // ====================================================
+
+  new SlashCommandBuilder()
+    .setName("halloffame")
+    .setDescription(
+      "Afficher le Hall of Fame du village"
+    ),
+
+  // ====================================================
+  // 📸 PHOTO
+  // ====================================================
+
+  new SlashCommandBuilder()
+    .setName("photo")
+    .setDescription(
+      "Lancer un vote pour une photo"
+    ),
+
+  // ====================================================
+  // 📊 STAT
+  // ====================================================
+
+  new SlashCommandBuilder()
+    .setName("stat")
+    .setDescription(
+      "Ajouter +1 à une statistique du village"
+    )
+    .addStringOption((option) =>
+      option
+        .setName("type")
+        .setDescription(
+          "Quelle statistique veux-tu ajouter ?"
+        )
+        .setRequired(true)
+        .addChoices(
+          {
+            name: "🗣️ Plouc — Lisa dit « Plouc »",
+            value: "plouc",
+          },
+          {
+            name: "🗣️ Pécno — Lisa dit « Pécno »",
+            value: "pecno",
+          },
+          {
+            name: "😱 Incroyable — Antoine dit « Incroyable »",
+            value: "incroyable",
+          },
+          {
+            name: "🚗 Plaques — Antoine dit « J’ai besoin de plaques »",
+            value: "plaques",
+          }
+        )
+    ),
+
+  // ====================================================
+  // 📊 STATS
+  // ====================================================
+
+  new SlashCommandBuilder()
+    .setName("stats")
+    .setDescription(
+      "Afficher les statistiques du village"
+    ),
+
+].map((command) => command.toJSON());
+
+// ======================================================
+// 🤖 BOT PRÊT
+// ======================================================
 
 client.once(
   Events.ClientReady,
-  async readyClient => {
+  async (readyClient) => {
 
     console.log(
-      `🤖 ${readyClient.user.tag} est prêt !`
+      "🤖 " +
+      readyClient.user.tag +
+      " est prêt !"
     );
 
     console.log(
-      `🆔 Bot ID : ${readyClient.user.id}`
+      "🆔 Bot ID : " +
+      readyClient.user.id
     );
 
     console.log(
-      `🏠 Guild ID : ${process.env.GUILD_ID}`
+      "🏠 Guild ID : " +
+      GUILD_ID
     );
-
-    const rest =
-      new REST({ version: "10" })
-        .setToken(process.env.DISCORD_TOKEN);
 
     try {
 
-      await rest.put(
-        Routes.applicationGuildCommands(
-          readyClient.user.id,
-          process.env.GUILD_ID
-        ),
-        {
-          body: commands,
-        }
+      await readyClient.application.commands.set(
+        commands,
+        GUILD_ID
       );
-
-      const registered =
-        await rest.get(
-          Routes.applicationGuildCommands(
-            readyClient.user.id,
-            process.env.GUILD_ID
-          )
-        );
 
       console.log(
         "✅ Commandes enregistrées !"
       );
 
       console.log(
-        "📋 Commandes :",
-        registered
-          .map(command => command.name)
-          .join(", ")
+        "📋 Commandes : tu-preferes, casino, roulette, potin, accuser, tribunal, poumba, halloffame, photo, stat, stats"
       );
 
     } catch (error) {
 
       console.error(
-        "❌ Erreur commandes :",
+        "❌ Erreur lors de l'enregistrement des commandes :",
         error
       );
     }
+
+    setInterval(
+      verifierStatsHebdomadaires,
+      60 * 60 * 1000
+    );
+
+    verifierStatsHebdomadaires();
   }
 );
 
-
-/* =====================================================
-   INTERACTIONS
-===================================================== */
+// ======================================================
+// 💬 INTERACTIONS
+// ======================================================
 
 client.on(
   Events.InteractionCreate,
-  async interaction => {
+  async (interaction) => {
 
     try {
 
-      /* =================================================
-         MODALS
-      ================================================= */
-
-      if (interaction.isModalSubmit()) {
-
-        /* -----------------------------------------------
-           CRÉATION TU PRÉFÈRES
-        ------------------------------------------------ */
-
-        if (
-          interaction.customId === "tp_creation"
-        ) {
-
-          const question =
-            interaction.fields
-              .getTextInputValue("tp_question");
-
-          const choixA =
-            interaction.fields
-              .getTextInputValue("tp_choix_a");
-
-          const choixB =
-            interaction.fields
-              .getTextInputValue("tp_choix_b");
-
-          const id =
-            Date.now().toString();
-
-          const poll = {
-
-            id,
-
-            creatorId:
-              interaction.user.id,
-
-            question,
-
-            choixA,
-
-            choixB,
-
-            votes: {},
-
-            channelId:
-              interaction.channelId,
-
-            messageId:
-              null,
-          };
-
-          activeTuPreferes.set(
-            id,
-            poll
-          );
-
-          const message =
-            await interaction.reply({
-
-              content:
-                `🤔 **NOUVEAU TU PRÉFÈRES !** 🤔\n\n` +
-
-                `👤 Créé par <@${poll.creatorId}>\n\n` +
-
-                afficherTuPreferes(poll),
-
-              components:
-                boutonsTuPreferes(id),
-
-              fetchReply:
-                true,
-            });
-
-          poll.messageId =
-            message.id;
-
-          return;
-        }
-
-
-        /* -----------------------------------------------
-           MODIFICATION
-        ------------------------------------------------ */
-
-        if (
-          interaction.customId
-            .startsWith("tp_edit_modal_")
-        ) {
-
-          const id =
-            interaction.customId
-              .replace(
-                "tp_edit_modal_",
-                ""
-              );
-
-          const poll =
-            activeTuPreferes.get(id);
-
-          if (!poll) {
-
-            await interaction.reply({
-              content:
-                "❌ Ce Tu préfères n'existe plus.",
-              ephemeral:
-                true,
-            });
-
-            return;
-          }
-
-          if (
-            interaction.user.id !==
-            poll.creatorId
-          ) {
-
-            await interaction.reply({
-              content:
-                "❌ Seul le créateur peut modifier ce vote.",
-              ephemeral:
-                true,
-            });
-
-            return;
-          }
-
-          if (
-            Object.keys(poll.votes).length > 0
-          ) {
-
-            await interaction.reply({
-              content:
-                "❌ Impossible de modifier après le premier vote.",
-              ephemeral:
-                true,
-            });
-
-            return;
-          }
-
-          poll.question =
-            interaction.fields
-              .getTextInputValue("tp_question");
-
-          poll.choixA =
-            interaction.fields
-              .getTextInputValue("tp_choix_a");
-
-          poll.choixB =
-            interaction.fields
-              .getTextInputValue("tp_choix_b");
-
-          try {
-
-            const channel =
-              await client.channels.fetch(
-                poll.channelId
-              );
-
-            const message =
-              await channel.messages.fetch(
-                poll.messageId
-              );
-
-            await message.edit({
-
-              content:
-                `🤔 **TU PRÉFÈRES MODIFIÉ !** 🤔\n\n` +
-
-                `👤 Créé par <@${poll.creatorId}>\n\n` +
-
-                afficherTuPreferes(poll),
-
-              components:
-                boutonsTuPreferes(id),
-            });
-
-          } catch (error) {
-
-            console.error(
-              "Erreur modification Tu préfères :",
-              error
-            );
-          }
-
-          await interaction.reply({
-
-            content:
-              "✅ Ton Tu préfères a été modifié !",
-
-            ephemeral:
-              true,
-          });
-
-          return;
-        }
-      }
-
-
-      /* =================================================
-         BOUTONS
-      ================================================= */
-
-      if (interaction.isButton()) {
-
-        const parts =
-          interaction.customId.split("_");
-
-        /* -----------------------------------------------
-           TU PRÉFÈRES
-        ------------------------------------------------ */
-
-        if (
-          parts[0] === "tp"
-        ) {
-
-          const action =
-            parts[1];
-
-          const id =
-            parts.slice(2).join("_");
-
-          const poll =
-            activeTuPreferes.get(id);
-
-          if (!poll) {
-
-            await interaction.reply({
-              content:
-                "❌ Ce Tu préfères n'est plus actif.",
-              ephemeral:
-                true,
-            });
-
-            return;
-          }
-
-
-          // VOTE
-          if (
-            action === "A" ||
-            action === "B"
-          ) {
-
-            poll.votes[
-              interaction.user.id
-            ] = action;
-
-            await interaction.update({
-
-              content:
-                `🤔 **TU PRÉFÈRES ?** 🤔\n\n` +
-
-                `👤 Créé par <@${poll.creatorId}>\n\n` +
-
-                afficherTuPreferes(poll),
-
-              components:
-                boutonsTuPreferes(id),
-            });
-
-            return;
-          }
-
-
-          // MODIFIER
-          if (
-            action === "edit"
-          ) {
-
-            if (
-              interaction.user.id !==
-              poll.creatorId
-            ) {
-
-              await interaction.reply({
-                content:
-                  "❌ Seul le créateur peut modifier ce vote.",
-                ephemeral:
-                  true,
-              });
-
-              return;
-            }
-
-            if (
-              Object.keys(poll.votes).length > 0
-            ) {
-
-              await interaction.reply({
-                content:
-                  "❌ Impossible de modifier après le premier vote.",
-                ephemeral:
-                  true,
-              });
-
-              return;
-            }
-
-            const modal =
-              new ModalBuilder()
-                .setCustomId(
-                  `tp_edit_modal_${id}`
-                )
-                .setTitle(
-                  "Modifier ton Tu préfères"
-                );
-
-            const questionInput =
-              new TextInputBuilder()
-                .setCustomId(
-                  "tp_question"
-                )
-                .setLabel(
-                  "Question"
-                )
-                .setStyle(
-                  TextInputStyle.Paragraph
-                )
-                .setRequired(true)
-                .setValue(
-                  poll.question
-                );
-
-            const choixAInput =
-              new TextInputBuilder()
-                .setCustomId(
-                  "tp_choix_a"
-                )
-                .setLabel(
-                  "Choix A"
-                )
-                .setStyle(
-                  TextInputStyle.Short
-                )
-                .setRequired(true)
-                .setValue(
-                  poll.choixA
-                );
-
-            const choixBInput =
-              new TextInputBuilder()
-                .setCustomId(
-                  "tp_choix_b"
-                )
-                .setLabel(
-                  "Choix B"
-                )
-                .setStyle(
-                  TextInputStyle.Short
-                )
-                .setRequired(true)
-                .setValue(
-                  poll.choixB
-                );
-
-            modal.addComponents(
-
-              new ActionRowBuilder()
-                .addComponents(
-                  questionInput
-                ),
-
-              new ActionRowBuilder()
-                .addComponents(
-                  choixAInput
-                ),
-
-              new ActionRowBuilder()
-                .addComponents(
-                  choixBInput
-                ),
-
-            );
-
-            await interaction.showModal(
-              modal
-            );
-
-            return;
-          }
-
-
-          // TERMINER
-          if (
-            action === "end"
-          ) {
-
-            if (
-              interaction.user.id !==
-              poll.creatorId
-            ) {
-
-              await interaction.reply({
-                content:
-                  "❌ Seul le créateur peut terminer le vote.",
-                ephemeral:
-                  true,
-              });
-
-              return;
-            }
-
-            await interaction.update({
-
-              content:
-                `🔒 **VOTE TERMINÉ** 🔒\n\n` +
-
-                afficherResultatTuPreferes(
-                  poll
-                ),
-
-              components: [],
-            });
-
-            activeTuPreferes.delete(
-              id
-            );
-
-            return;
-          }
-        }
-
-
-        /* -----------------------------------------------
-           TRIBUNAL
-        ------------------------------------------------ */
-
-        if (
-          parts[0] === "tribunal"
-        ) {
-
-          const action =
-            parts[1];
-
-          const id =
-            parts[2];
-
-          const tribunal =
-            activeTribunaux.get(id);
-
-          if (!tribunal) {
-
-            await interaction.reply({
-              content:
-                "❌ Ce tribunal est terminé.",
-              ephemeral:
-                true,
-            });
-
-            return;
-          }
-
-
-          // VOTE COUPABLE
-          if (
-            action === "coupable"
-          ) {
-
-            tribunal.votes[
-              interaction.user.id
-            ] = "coupable";
-
-            await interaction.update({
-
-              content:
-                afficherTribunal(
-                  tribunal
-                ),
-
-              components:
-                boutonsTribunal(id),
-            });
-
-            return;
-          }
-
-
-          // VOTE INNOCENT
-          if (
-            action === "innocent"
-          ) {
-
-            tribunal.votes[
-              interaction.user.id
-            ] = "innocent";
-
-            await interaction.update({
-
-              content:
-                afficherTribunal(
-                  tribunal
-                ),
-
-              components:
-                boutonsTribunal(id),
-            });
-
-            return;
-          }
-
-
-          // TERMINER TRIBUNAL
-          if (
-            action === "end"
-          ) {
-
-            const votes =
-              Object.values(
-                tribunal.votes
-              );
-
-            const coupable =
-              votes.filter(
-                vote =>
-                  vote === "coupable"
-              ).length;
-
-            const innocent =
-              votes.filter(
-                vote =>
-                  vote === "innocent"
-              ).length;
-
-            let verdict;
-
-            if (
-              coupable > innocent
-            ) {
-
-              verdict =
-                "🔴 **COUPABLE !**";
-
-            } else if (
-              innocent > coupable
-            ) {
-
-              verdict =
-                "🟢 **INNOCENT !**";
-
-            } else {
-
-              verdict =
-                "🤝 **ÉGALITÉ ! Le tribunal ne sait pas quoi décider.**";
-            }
-
-            await interaction.update({
-
-              content:
-                `⚖️ **VERDICT DU VILLAGE** ⚖️\n\n` +
-
-                `👤 ${tribunal.personne}\n\n` +
-
-                `🚨 ${tribunal.accusation}\n\n` +
-
-                `🔴 Coupable : **${coupable}**\n` +
-
-                `🟢 Innocent : **${innocent}**\n\n` +
-
-                `${verdict}`,
-
-              components: [],
-            });
-
-            activeTribunaux.delete(
-              id
-            );
-
-            return;
-          }
-        }
-      }
-
-
-      /* =================================================
-         COMMANDES SLASH
-      ================================================= */
+      // ==================================================
+      // 📊 /STAT
+      // ==================================================
 
       if (
-        !interaction.isChatInputCommand()
+        interaction.isChatInputCommand() &&
+        interaction.commandName === "stat"
       ) {
+
+        const type =
+          interaction.options.getString("type");
+
+        const total =
+          ajouterStat(type);
+
+        await interaction.reply(
+          creerMessageStats(type, total)
+        );
+
         return;
       }
 
-
-      /* =================================================
-         TU PRÉFÈRES
-      ================================================= */
+      // ==================================================
+      // 📊 /STATS
+      // ==================================================
 
       if (
-        interaction.commandName ===
-        "tu-preferes"
+        interaction.isChatInputCommand() &&
+        interaction.commandName === "stats"
+      ) {
+
+        let message =
+          "📊 **STATISTIQUES DU VILLAGE** 📊\n\n";
+
+        for (
+          const type of Object.keys(statNames)
+        ) {
+
+          const total =
+            obtenirStat(type);
+
+          const personne =
+            statPeople[type];
+
+          message +=
+            "👤 **" +
+            personne +
+            "**\n" +
+            statNames[type] +
+            "\n" +
+            "🔢 **" +
+            total +
+            " fois**\n\n";
+        }
+
+        message +=
+          "🏡 *Le village n'oublie rien...*";
+
+        await interaction.reply(message);
+
+        return;
+      }
+
+      // ==================================================
+      // 🤔 /TU-PREFERES
+      // ==================================================
+
+      if (
+        interaction.isChatInputCommand() &&
+        interaction.commandName === "tu-preferes"
       ) {
 
         const modal =
           new ModalBuilder()
             .setCustomId(
-              "tp_creation"
+              "tu_preferes_modal"
             )
             .setTitle(
-              "Créer un Tu préfères"
+              "🤔 Tu préfères ?"
             );
 
-        const questionInput =
+        const question1 =
           new TextInputBuilder()
-            .setCustomId(
-              "tp_question"
-            )
-            .setLabel(
-              "Ta question"
-            )
-            .setPlaceholder(
-              "Ex : Tu préfères..."
-            )
-            .setStyle(
-              TextInputStyle.Paragraph
-            )
-            .setRequired(true)
-            .setMaxLength(500);
-
-        const choixAInput =
-          new TextInputBuilder()
-            .setCustomId(
-              "tp_choix_a"
-            )
-            .setLabel(
-              "Choix A"
-            )
-            .setPlaceholder(
-              "Ex : vivre avec Poumba 🐗"
-            )
+            .setCustomId("question1")
+            .setLabel("Option 1")
             .setStyle(
               TextInputStyle.Short
             )
-            .setRequired(true)
-            .setMaxLength(100);
+            .setRequired(true);
 
-        const choixBInput =
+        const question2 =
           new TextInputBuilder()
-            .setCustomId(
-              "tp_choix_b"
-            )
-            .setLabel(
-              "Choix B"
-            )
-            .setPlaceholder(
-              "Ex : vivre avec le maire 👑"
-            )
+            .setCustomId("question2")
+            .setLabel("Option 2")
             .setStyle(
               TextInputStyle.Short
             )
-            .setRequired(true)
-            .setMaxLength(100);
+            .setRequired(true);
 
         modal.addComponents(
-
-          new ActionRowBuilder()
-            .addComponents(
-              questionInput
-            ),
-
-          new ActionRowBuilder()
-            .addComponents(
-              choixAInput
-            ),
-
-          new ActionRowBuilder()
-            .addComponents(
-              choixBInput
-            ),
-
+          new ActionRowBuilder().addComponents(
+            question1
+          ),
+          new ActionRowBuilder().addComponents(
+            question2
+          )
         );
 
         await interaction.showModal(
@@ -1191,154 +610,130 @@ client.on(
         return;
       }
 
-
-      /* =================================================
-         CASINO
-      ================================================= */
+      // ==================================================
+      // 🎰 /CASINO
+      // ==================================================
 
       if (
-        interaction.commandName ===
-        "casino"
+        interaction.isChatInputCommand() &&
+        interaction.commandName === "casino"
       ) {
 
-        const symboles = [
-          "🍒",
-          "🍋",
-          "🍉",
-          "⭐",
-          "💎",
-          "7️⃣",
-        ];
-
-        const a =
-          symboles[
-            Math.floor(
-              Math.random() *
-              symboles.length
-            )
-          ];
-
-        const b =
-          symboles[
-            Math.floor(
-              Math.random() *
-              symboles.length
-            )
-          ];
-
-        const c =
-          symboles[
-            Math.floor(
-              Math.random() *
-              symboles.length
-            )
-          ];
+        const nombre =
+          Math.floor(
+            Math.random() * 100
+          ) + 1;
 
         let resultat;
 
-        if (
-          a === b &&
-          b === c
-        ) {
+        if (nombre >= 90) {
 
           resultat =
-            "🎉 **JACKPOT !!!** 🎉";
+            "💰 **JACKPOT !** Le village est en feu !";
 
-        } else if (
-          a === b ||
-          b === c ||
-          a === c
-        ) {
+        } else if (nombre >= 60) {
 
           resultat =
-            "🔥 **Deux symboles identiques !**";
+            "🍀 Pas mal ! La mairie approuve.";
+
+        } else if (nombre >= 30) {
+
+          resultat =
+            "😐 Mouais... on fera mieux demain.";
 
         } else {
 
           resultat =
-            "😭 **Perdu ! Retente ta chance.**";
+            "💀 Catastrophe. Tu viens de financer le bar.";
         }
 
         await interaction.reply(
-
-          `🎰 **CASINO DU VILLAGE** 🎰\n\n` +
-
-          `┃ ${a} │ ${b} │ ${c} ┃\n\n` +
-
-          `${resultat}`
+          "🎰 **CASINO DU VILLAGE** 🎰\n\n" +
+          "🎲 Résultat : **" +
+          nombre +
+          "/100**\n\n" +
+          resultat
         );
 
         return;
       }
 
-
-      /* =================================================
-         ROULETTE
-      ================================================= */
+      // ==================================================
+      // 🎡 /ROULETTE
+      // ==================================================
 
       if (
-        interaction.commandName ===
-        "roulette"
+        interaction.isChatInputCommand() &&
+        interaction.commandName === "roulette"
       ) {
 
-        const members =
-          await interaction.guild.members.fetch();
-
-        const villageois =
-          members.filter(
-            member =>
-              !member.user.bot
+        const nombre =
+          Math.floor(
+            Math.random() * 37
           );
 
-        const choix =
-          villageois.random();
+        let couleur;
 
-        if (!choix) {
+        if (nombre === 0) {
 
-          await interaction.reply(
-            "❌ Aucun villageois trouvé."
-          );
+          couleur = "🟢 VERT";
 
-          return;
+        } else if (
+          [
+            1, 3, 5, 7, 9,
+            12, 14, 16, 18,
+            19, 21, 23, 25,
+            27, 30, 32, 34, 36,
+          ].includes(nombre)
+        ) {
+
+          couleur = "🔴 ROUGE";
+
+        } else {
+
+          couleur = "⚫ NOIR";
         }
 
         await interaction.reply(
-
-          `🎯 **LA ROULETTE DU VILLAGE A PARLÉ !** 🎯\n\n` +
-
-          `👉 Le village désigne **${choix.displayName}** ! 😈`
+          "🎡 **ROULETTE DU VILLAGE** 🎡\n\n" +
+          "🎯 Numéro : **" +
+          nombre +
+          "**\n" +
+          couleur +
+          "\n\n" +
+          "🏡 *Le village a parlé.*"
         );
 
         return;
       }
 
-
-      /* =================================================
-         POTIN
-      ================================================= */
+      // ==================================================
+      // 🗣️ /POTIN
+      // ==================================================
 
       if (
-        interaction.commandName ===
-        "potin"
+        interaction.isChatInputCommand() &&
+        interaction.commandName === "potin"
       ) {
 
         const potins = [
 
-          "🗣️ On raconte que quelqu'un mange les provisions en cachette...",
+          "👀 Quelqu'un a encore regardé les messages sans répondre.",
 
-          "🗣️ Une personne du village serait secrètement fan de Poumba.",
+          "🍺 Une personne du village connaît probablement trop bien le bar.",
 
-          "🗣️ Quelqu'un aurait encore oublié de répondre dans le groupe.",
+          "🎮 Quelqu'un a dit « dernière partie » avant de jouer encore 3 heures.",
 
-          "🗣️ Une soirée secrète serait en préparation... 👀",
+          "🏃 Quelqu'un a probablement promis de venir... puis a disparu.",
 
-          "🗣️ Quelqu'un aurait découvert un bar beaucoup trop intéressant.",
+          "📦 Quelqu'un a encore volé un coffre.",
 
-          "🗣️ Il paraît qu'une personne du village ne sait toujours pas skier.",
+          "🐌 Quelqu'un n'a absolument pas rush quand il fallait.",
 
-          "🗣️ Quelqu'un a encore promis de rentrer tôt.",
+          "🤨 Une personne du village cache quelque chose.",
 
-          "🗣️ Une personne aurait un dossier compromettant sur le reste du village.",
+          "🏡 La mairie enquête actuellement sur tout le monde.",
+
         ];
 
         const potin =
@@ -1350,20 +745,22 @@ client.on(
           ];
 
         await interaction.reply(
-          potin
+          "🗣️ **POTIN DU VILLAGE** 🗣️\n\n" +
+          potin +
+          "\n\n" +
+          "🤫 *Source : absolument pas fiable.*"
         );
 
         return;
       }
 
-
-      /* =================================================
-         ACCUSER
-      ================================================= */
+      // ==================================================
+      // ⚔️ /ACCUSER
+      // ==================================================
 
       if (
-        interaction.commandName ===
-        "accuser"
+        interaction.isChatInputCommand() &&
+        interaction.commandName === "accuser"
       ) {
 
         const personne =
@@ -1371,189 +768,346 @@ client.on(
             "personne"
           );
 
-        const accusation =
-          accusationAleatoire();
-
-        await interaction.reply(
-
-          `🚨 **ACCUSATION DU VILLAGE** 🚨\n\n` +
-
-          `👤 **${personne.username}**\n\n` +
-
-          `📂 **Thème : ${accusation.theme}**\n\n` +
-
-          `⚖️ Est accusé(e) de **${accusation.phrase}** !\n\n` +
-
-          `🚨 La justice du village est impitoyable.`
-        );
-
-        return;
-      }
-
-
-      /* =================================================
-         TRIBUNAL
-      ================================================= */
-
-      if (
-        interaction.commandName ===
-        "tribunal"
-      ) {
-
-        const personne =
-          interaction.options.getUser(
-            "personne"
+        const theme =
+          interaction.options.getString(
+            "theme"
           );
 
-        const accusation =
-          accusationAleatoire();
+        const themes = {
 
-        const id =
-          Date.now().toString();
+          buverie: "🍻 BUVERIE",
 
-        const tribunal = {
+          ski: "🎿 SKI",
 
-          id,
+          soirees: "🎉 SOIRÉES",
 
-          personne:
-            `<@${personne.id}>`,
+          gages: "🎲 GAGES DE SOIRÉE",
 
-          accusation:
-            `${accusation.theme} — ${accusation.phrase}`,
-
-          votes: {},
         };
 
-        activeTribunaux.set(
-          id,
-          tribunal
-        );
+        const row =
+          new ActionRowBuilder().addComponents(
+
+            new ButtonBuilder()
+              .setCustomId(
+                "tribunal_coupable"
+              )
+              .setLabel(
+                "⚖️ COUPABLE"
+              )
+              .setStyle(
+                ButtonStyle.Danger
+              ),
+
+            new ButtonBuilder()
+              .setCustomId(
+                "tribunal_innocent"
+              )
+              .setLabel(
+                "😇 INNOCENT"
+              )
+              .setStyle(
+                ButtonStyle.Success
+              )
+          );
 
         await interaction.reply({
 
           content:
-            afficherTribunal(
-              tribunal
-            ),
+            "⚔️ **ACCUSATION OFFICIELLE** ⚔️\n\n" +
+            "👤 Accusé : **" +
+            personne.username +
+            "**\n" +
+            "📂 Dossier : **" +
+            themes[theme] +
+            "**\n\n" +
+            "🏡 Le tribunal du village est ouvert !\n\n" +
+            "Votez ci-dessous :",
 
-          components:
-            boutonsTribunal(id),
+          components: [row],
+
         });
 
         return;
       }
 
-
-      /* =================================================
-         POUMBA
-      ================================================= */
-
-      if (
-        interaction.commandName ===
-        "poumba"
-      ) {
-
-        await interaction.reply(
-
-          `🚨🐗 **ALERTE POUMBA** 🐗🚨\n\n` +
-
-          `**POUMBA EST DANS LE VILLAGE !**\n\n` +
-
-          `🥔 Cachez les patates.\n` +
-
-          `🍺 Fermez le bar.\n` +
-
-          `🏃 **FUYEZ !**`
-        );
-
-        return;
-      }
-
-
-      /* =================================================
-         HALL OF FAME
-      ================================================= */
+      // ==================================================
+      // ⚖️ /TRIBUNAL
+      // ==================================================
 
       if (
-        interaction.commandName ===
-        "halloffame"
+        interaction.isChatInputCommand() &&
+        interaction.commandName === "tribunal"
       ) {
 
-        const moment =
-          interaction.options.getString(
-            "moment"
+        const row =
+          new ActionRowBuilder().addComponents(
+
+            new ButtonBuilder()
+              .setCustomId(
+                "tribunal_coupable"
+              )
+              .setLabel(
+                "⚖️ COUPABLE"
+              )
+              .setStyle(
+                ButtonStyle.Danger
+              ),
+
+            new ButtonBuilder()
+              .setCustomId(
+                "tribunal_innocent"
+              )
+              .setLabel(
+                "😇 INNOCENT"
+              )
+              .setStyle(
+                ButtonStyle.Success
+              )
           );
 
+        await interaction.reply({
+
+          content:
+            "⚖️ **TRIBUNAL DU VILLAGE** ⚖️\n\n" +
+            "Le procès commence !\n\n" +
+            "Votez :",
+
+          components: [row],
+
+        });
+
+        return;
+      }
+
+      // ==================================================
+      // 🐗 /POUMBA
+      // ==================================================
+
+      if (
+        interaction.isChatInputCommand() &&
+        interaction.commandName === "poumba"
+      ) {
+
         await interaction.reply(
-
-          `🏆 **NOUVEAU MOMENT DU VILLAGE** 🏆\n\n` +
-
-          `📜 ${moment}\n\n` +
-
-          `👤 Proposé par **${interaction.user.username}**\n\n` +
-
-          `🔥 **MOMENT VALIDÉ PAR LE VILLAGE !**`
+          "🚨🐗 **ALERTE POUMBA !** 🐗🚨\n\n" +
+          "🥔 **PROTÉGEZ LES PATATES !**\n" +
+          "🍺 **LE BAR EST DÉSORMAIS SOUS SURVEILLANCE !**\n" +
+          "🏃💨 **FUYEZ, LE POUMBA EST LÀ !**"
         );
 
         return;
       }
 
-
-      /* =================================================
-         PHOTO
-      ================================================= */
+      // ==================================================
+      // 🏆 /HALLOFFAME
+      // ==================================================
 
       if (
-        interaction.commandName ===
-        "photo"
+        interaction.isChatInputCommand() &&
+        interaction.commandName === "halloffame"
       ) {
 
-        const description =
-          interaction.options.getString(
-            "description"
+        await interaction.reply(
+          "🏆 **HALL OF FAME DU VILLAGE** 🏆\n\n" +
+          "📦 **Le Grand Voleur de Coffres**\n" +
+          "🏅 Champion officiel des coffres disparus.\n\n" +
+          "🐌 **Ministre du Non-Rush**\n" +
+          "🏅 Pour les joueurs qui attendent... encore...\n\n" +
+          "🗣️ **Impératrice du « Plouc »**\n" +
+          "🏅 Un titre qui se mérite chaque jour.\n\n" +
+          "🏡 *La mairie observe vos exploits.*"
+        );
+
+        return;
+      }
+
+      // ==================================================
+      // 📸 /PHOTO
+      // ==================================================
+
+      if (
+        interaction.isChatInputCommand() &&
+        interaction.commandName === "photo"
+      ) {
+
+        const row =
+          new ActionRowBuilder().addComponents(
+
+            new ButtonBuilder()
+              .setCustomId(
+                "photo_vote_1"
+              )
+              .setLabel(
+                "🔥 Vote"
+              )
+              .setStyle(
+                ButtonStyle.Primary
+              )
+
+          );
+
+        await interaction.reply({
+
+          content:
+            "📸 **PHOTO DU VILLAGE** 📸\n\n" +
+            "Une nouvelle photo est proposée au vote !\n\n" +
+            "🔥 Votez avec le bouton ci-dessous.",
+
+          components: [row],
+
+        });
+
+        return;
+      }
+
+      // ==================================================
+      // 📝 MODAL TU PRÉFÈRES
+      // ==================================================
+
+      if (
+        interaction.isModalSubmit() &&
+        interaction.customId ===
+          "tu_preferes_modal"
+      ) {
+
+        const option1 =
+          interaction.fields.getTextInputValue(
+            "question1"
+          );
+
+        const option2 =
+          interaction.fields.getTextInputValue(
+            "question2"
           );
 
         const row =
-          new ActionRowBuilder()
-            .addComponents(
+          new ActionRowBuilder().addComponents(
 
-              new ButtonBuilder()
-                .setCustomId("photo_like")
-                .setLabel("🔥 J'aime")
-                .setStyle(
-                  ButtonStyle.Primary
-                ),
+            new ButtonBuilder()
+              .setCustomId(
+                "tp_option1"
+              )
+              .setLabel(
+                "1️⃣ " + option1
+              )
+              .setStyle(
+                ButtonStyle.Primary
+              ),
 
-              new ButtonBuilder()
-                .setCustomId("photo_lol")
-                .setLabel("😂 Incroyable")
-                .setStyle(
-                  ButtonStyle.Success
-                ),
+            new ButtonBuilder()
+              .setCustomId(
+                "tp_option2"
+              )
+              .setLabel(
+                "2️⃣ " + option2
+              )
+              .setStyle(
+                ButtonStyle.Secondary
+              )
 
-              new ButtonBuilder()
-                .setCustomId("photo_honte")
-                .setLabel("💀 La honte")
-                .setStyle(
-                  ButtonStyle.Danger
-                ),
-
-            );
+          );
 
         await interaction.reply({
 
           content:
-            `📸 **VOTE PHOTO DU VILLAGE** 📸\n\n` +
+            "🤔 **TU PRÉFÈRES ?** 🤔\n\n" +
+            "1️⃣ **" +
+            option1 +
+            "**\n" +
+            "2️⃣ **" +
+            option2 +
+            "**\n\n" +
+            "Votez !",
 
-            `${description}\n\n` +
+          components: [row],
 
-            `👉 Votez pour la photo !`,
-
-          components:
-            [row],
         });
 
         return;
+      }
+
+      // ==================================================
+      // 🔘 BOUTONS
+      // ==================================================
+
+      if (interaction.isButton()) {
+
+        // Tribunal
+        if (
+          interaction.customId ===
+            "tribunal_coupable" ||
+          interaction.customId ===
+            "tribunal_innocent"
+        ) {
+
+          const choix =
+            interaction.customId ===
+            "tribunal_coupable"
+              ? "⚖️ COUPABLE"
+              : "😇 INNOCENT";
+
+          await interaction.reply({
+
+            content:
+              "🗳️ **Vote enregistré !**\n\n" +
+              choix +
+              "\n\n" +
+              "👤 Vote de **" +
+              interaction.user.username +
+              "**",
+
+            ephemeral: true,
+
+          });
+
+          return;
+        }
+
+        // Tu préfères
+        if (
+          interaction.customId ===
+            "tp_option1" ||
+          interaction.customId ===
+            "tp_option2"
+        ) {
+
+          const choix =
+            interaction.customId ===
+            "tp_option1"
+              ? "1️⃣ Option 1"
+              : "2️⃣ Option 2";
+
+          await interaction.reply({
+
+            content:
+              "✅ **Vote enregistré !**\n\n" +
+              choix,
+
+            ephemeral: true,
+
+          });
+
+          return;
+        }
+
+        // Photo
+        if (
+          interaction.customId ===
+          "photo_vote_1"
+        ) {
+
+          await interaction.reply({
+
+            content:
+              "📸 **Vote enregistré !** 🔥",
+
+            ephemeral: true,
+
+          });
+
+          return;
+        }
       }
 
     } catch (error) {
@@ -1563,29 +1117,80 @@ client.on(
         error
       );
 
-      if (
-        !interaction.replied &&
-        !interaction.deferred
-      ) {
+      if (!interaction.replied) {
 
         await interaction.reply({
 
           content:
             "❌ Une erreur est survenue.",
 
-          ephemeral:
-            true,
+          ephemeral: true,
+
         });
       }
     }
   }
 );
 
+// ======================================================
+// 🐗 ALERTE POUMBA AUTOMATIQUE
+// ======================================================
 
-/* =====================================================
-   CONNEXION
-===================================================== */
+client.on(
+  Events.VoiceStateUpdate,
+  async (oldState, newState) => {
+
+    if (
+      !newState.member ||
+      newState.member.id !==
+        process.env.TARGET_USER_ID
+    ) {
+      return;
+    }
+
+    if (
+      !oldState.channelId &&
+      newState.channelId
+    ) {
+
+      const channel =
+        newState.guild.channels.cache.get(
+          process.env.CHANNEL_ID
+        );
+
+      if (!channel) {
+
+        console.log(
+          "❌ CHANNEL_ID introuvable pour Poumba."
+        );
+
+        return;
+      }
+
+      await channel.send(
+        "🚨🐗 **ALERTE POUMBA !** 🐗🚨\n\n" +
+        "**" +
+        newState.member.displayName +
+        "** vient d'entrer dans le vocal !\n\n" +
+        "🥔 **PROTÉGEZ LES PATATES !**\n" +
+        "🍺 **LE BAR EST DÉSORMAIS SOUS SURVEILLANCE !**\n" +
+        "🏃💨 **FUYEZ, LE POUMBA EST LÀ !**"
+      );
+    }
+  }
+);
+
+// ======================================================
+// 📊 CHARGEMENT DES STATS
+// ======================================================
+
+chargerStats();
+
+// ======================================================
+// 🔑 CONNEXION
+// ======================================================
 
 client.login(
   process.env.DISCORD_TOKEN
 );
+
